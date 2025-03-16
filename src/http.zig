@@ -67,7 +67,13 @@ pub const Server = struct {
                 var closed = false;
                 var req = Request{ .fd = ready_socket };
 
-                const read = posix.read(ready_socket, buf) catch 0;
+                var read: usize = 0;
+                while (true) {
+                    const newly_read = posix.read(ready_socket, buf[read..]) catch 0;
+                    read += newly_read;
+                    if (newly_read == 0)
+                        break;
+                }
                 if (read == 0) {
                     closed = true;
                 } else {

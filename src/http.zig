@@ -260,7 +260,7 @@ pub const Request = struct {
         }
     }
 
-    pub fn get_value(self: *Request, name: []const u8) ?[]const u8 {
+    pub fn get_value(self: Request, name: []const u8) ?[]const u8 {
         const body = self.body orelse return null;
         const name_index = std.mem.indexOf(u8, body, name) orelse return null;
         const eql_index = std.mem.indexOfScalarPos(u8, body, name_index, '=') orelse return null;

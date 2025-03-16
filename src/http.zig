@@ -59,6 +59,10 @@ pub const Server = struct {
                 errdefer posix.close(client_socket);
                 var event = linux.epoll_event{ .events = linux.EPOLL.IN, .data = .{ .fd = client_socket } };
                 try posix.epoll_ctl(self.efd, linux.EPOLL.CTL_ADD, client_socket, &event);
+                var addr: std.c.sockaddr = undefined;
+                var addr_size: std.c.socklen_t = @sizeOf(std.c.sockaddr);
+                _ = std.c.getpeername(client_socket, &addr, &addr_size);
+                std.debug.print("new connection from {}\n", .{addr});
             } else {
                 var closed = false;
                 var req = Request{ .fd = ready_socket };
@@ -109,6 +113,7 @@ pub const Request = struct {
     body: ?[]u8 = null,
 
     pub fn parse(self: *Request, buf: []u8) bool {
+        std.debug.print("buf: {s}\n", .{buf});
         var state: u8 = 0;
 
         var start: u32 = 0;

@@ -114,16 +114,16 @@ pub const Request = struct {
 
     method: Method = undefined,
     target: []const u8 = undefined,
+    query: ?[]const u8 = null,
     version: ?[]const u8 = null,
     head: ?[]const u8 = null,
     body: ?[]u8 = null,
 
     pub fn parse(self: *Request, buf: []u8) bool {
-        std.debug.print("buf: {s}\n", .{buf});
+        // std.debug.print("buf: {s}\n", .{buf});
         var state: u8 = 0;
 
         var start: u32 = 0;
-        // var end: u32 = 0;
 
         var index: u32 = 0;
         while (index < buf.len) {
@@ -136,25 +136,36 @@ pub const Request = struct {
                     if (c == ' ') {
                         self.method = @enumFromInt(Method.parse(buf[start..index]));
                         start = index + 1;
-                        state += 1;
+                        state = 1;
                     }
                 },
                 1 => {
-                    if (c == ' ') {
+                    if (c == '?') {
                         self.target = buf[start..index];
                         start = index + 1;
-                        state += 1;
+                        state = 2;
+                    } else if (c == ' ') {
+                        self.target = buf[start..index];
+                        start = index + 1;
+                        state = 3;
                     }
                 },
                 2 => {
+                    if (c == ' ') {
+                        self.query = buf[start..index];
+                        start = index + 1;
+                        state = 3;
+                    }
+                },
+                3 => {
                     if (c == '\r') {
                         self.version = buf[start..index];
                         start = index + 2;
                         index += 1;
-                        state += 1;
+                        state = 4;
                     }
                 },
-                3 => {
+                4 => {
                     if (c == '\r' and (index + 2) < buf.len and buf[index + 2] == '\r') {
                         self.head = buf[start .. index + 2];
 
@@ -169,30 +180,6 @@ pub const Request = struct {
         }
 
         return true;
-    }
-
-    pub fn get_header1(self: Request, name: []const u8) ?[]const u8 {
-        const head = self.head orelse return null;
-        var start: usize = 0;
-        var matching: usize = 0;
-        for (0..head.len) |i| {
-            const c = head[i];
-
-            if (matching < name.len) {
-                if (c == name[matching]) {
-                    // if (matching == 0) start = i;
-                    matching += 1;
-                } else {
-                    start = i;
-                    matching = 0;
-                }
-            } else {
-                if (c == '\r') {
-                    return head[start..i];
-                }
-            }
-        }
-        return null;
     }
 
     pub fn get_cookie(self: Request, name: []const u8) ?[]const u8 {
@@ -218,6 +205,74 @@ pub const Request = struct {
                     }
                 } else {
                     matching = 0;
+                }
+            }
+        }
+        return null;
+    }
+
+    pub fn get_header(self: Request, name: []const u8) ?[]const u8 {
+        const head = self.head orelse return null;
+        const header_start = std.mem.indexOf(u8, head, name) orelse return null;
+        const colon_index = std.mem.indexOfPos(u8, head, header_start, ": ") orelse return null;
+        const header_end = std.mem.indexOfPos(u8, head, colon_index, "\r\n") orelse return null;
+        return head[colon_index + 2 .. header_end];
+    }
+
+    pub fn get_param(self: Request, name: []const u8) ?[]const u8 {
+        const query = self.query orelse return null;
+        const name_index = std.mem.indexOf(u8, query, name) orelse return null;
+        const eql_index = std.mem.indexOfScalarPos(u8, query, name_index, '=') orelse return null;
+        if (std.mem.indexOfScalarPos(u8, query, name_index, '&')) |amp_index| {
+            const result = query[eql_index + 1 .. amp_index];
+            return result;
+        } else {
+            const result = query[eql_index + 1 .. query.len];
+            return result;
+        }
+    }
+
+    pub fn get_value(self: Request, name: []const u8) ?[]const u8 {
+        const body = self.body orelse return null;
+        const name_index = std.mem.indexOf(u8, body, name) orelse return null;
+        const eql_index = std.mem.indexOfScalarPos(u8, body, name_index, '=') orelse return null;
+        if (std.mem.indexOfScalarPos(u8, body, name_index, '&')) |amp_index| {
+            const result = body[eql_index + 1 .. amp_index];
+            return result;
+        } else {
+            const result = body[eql_index + 1 .. body.len];
+            return result;
+        }
+    }
+
+    pub fn get_cookie1(self: Request, name: []const u8) ?[]const u8 {
+        const cookie = self.get_header("Cookie") orelse return null;
+        const name_index = std.mem.indexOf(u8, cookie, name) orelse return null;
+        const eql_index = std.mem.indexOfScalarPos(u8, cookie, name_index, '=') orelse return null;
+        if (std.mem.indexOfScalarPos(u8, cookie, eql_index, ';')) |semi_index| {
+            return cookie[eql_index + 1 .. semi_index];
+        } else {
+            return cookie[eql_index + 1 .. cookie.len];
+        }
+    }
+    pub fn get_header1(self: Request, name: []const u8) ?[]const u8 {
+        const head = self.head orelse return null;
+        var start: usize = 0;
+        var matching: usize = 0;
+        for (0..head.len) |i| {
+            const c = head[i];
+
+            if (matching < name.len) {
+                if (c == name[matching]) {
+                    // if (matching == 0) start = i;
+                    matching += 1;
+                } else {
+                    start = i;
+                    matching = 0;
+                }
+            } else {
+                if (c == '\r') {
+                    return head[start..i];
                 }
             }
         }
@@ -251,53 +306,21 @@ pub const Request = struct {
 
         return true;
     }
-
-    pub fn get_header(self: Request, name: []const u8) ?[]const u8 {
-        const head = self.head orelse return null;
-        const header_start = std.mem.indexOf(u8, head, name) orelse return null;
-        const colon_index = std.mem.indexOfPos(u8, head, header_start, ": ") orelse return null;
-        const header_end = std.mem.indexOfPos(u8, head, colon_index, "\r\n") orelse return null;
-        return head[colon_index + 2 .. header_end];
-    }
-
-    pub fn get_cookie1(self: Request, name: []const u8) ?[]const u8 {
-        const cookie = self.get_header("Cookie") orelse return null;
-        const name_index = std.mem.indexOf(u8, cookie, name) orelse return null;
-        const eql_index = std.mem.indexOfScalarPos(u8, cookie, name_index, '=') orelse return null;
-        if (std.mem.indexOfScalarPos(u8, cookie, eql_index, ';')) |semi_index| {
-            return cookie[eql_index + 1 .. semi_index];
-        } else {
-            return cookie[eql_index + 1 .. cookie.len];
-        }
-    }
-
-    pub fn get_value(self: Request, name: []const u8) ?[]const u8 {
-        const body = self.body orelse return null;
-        const name_index = std.mem.indexOf(u8, body, name) orelse return null;
-        const eql_index = std.mem.indexOfScalarPos(u8, body, name_index, '=') orelse return null;
-        if (std.mem.indexOfScalarPos(u8, body, name_index, '&')) |amp_index| {
-            const result = body[eql_index + 1 .. amp_index];
-            return result;
-        } else {
-            const result = body[eql_index + 1 .. body.len];
-            return result;
-        }
-    }
 };
 
 pub const Response = struct {
     const ExtraHeadersMax = 16;
     const HeaderList = std.BoundedArray(Header, ExtraHeadersMax);
 
-    fd: posix.fd_t,
+    req: Request,
     stream_head: std.io.FixedBufferStream([]u8),
     stream_body: std.io.FixedBufferStream([]u8),
     status: Status = .ok,
     extra_headers: HeaderList = HeaderList.init(0) catch unreachable,
 
-    pub fn init(fd: posix.fd_t, buf_head: []u8, buf_body: []u8) Response {
+    pub fn init(req: Request, buf_head: []u8, buf_body: []u8) Response {
         return .{
-            .fd = fd,
+            .req = req,
             .stream_head = std.io.fixedBufferStream(buf_head),
             .stream_body = std.io.fixedBufferStream(buf_body),
         };
@@ -308,6 +331,7 @@ pub const Response = struct {
         try self.add_header("Location", .{ "{s}", .{location} });
     }
 
+    /// value can be a "string" or a struct .{ "fmt", .{ args }}
     pub fn add_header(self: *Response, name: []const u8, value: anytype) !void {
         const header = try self.extra_headers.addOne();
         try header.name.writer().writeAll(name);
@@ -376,7 +400,7 @@ pub const Response = struct {
         const res = self.stream_head.getWritten();
         var written: usize = 0;
         while (written < res.len) {
-            written += posix.write(self.fd, res[written..res.len]) catch |err| {
+            written += posix.write(self.req.fd, res[written..res.len]) catch |err| {
                 std.debug.print("posix.write: {}\n", .{err});
                 continue;
             };

@@ -59,10 +59,10 @@ pub const Server = struct {
                 errdefer posix.close(client_socket);
                 var event = linux.epoll_event{ .events = linux.EPOLL.IN, .data = .{ .fd = client_socket } };
                 try posix.epoll_ctl(self.efd, linux.EPOLL.CTL_ADD, client_socket, &event);
-                var addr: std.c.sockaddr = undefined;
+                var addr: std.os.linux.sockaddr = undefined;
                 var addr_size: std.c.socklen_t = @sizeOf(std.c.sockaddr);
                 _ = std.c.getpeername(client_socket, &addr, &addr_size);
-                std.debug.print("new connection from {}\n", .{addr});
+                std.debug.print("new connection from {} [{}/{}]\n", .{ addr, @sizeOf(std.os.linux.sockaddr), addr_size });
             } else {
                 var closed = false;
                 var req = Request{ .fd = ready_socket };
@@ -73,6 +73,8 @@ pub const Server = struct {
                     read += newly_read;
                     if (newly_read == 0)
                         break;
+                    std.debug.print("[[{}/{}]]\n", .{ newly_read, read });
+                    std.time.sleep(100000000);
                 }
                 if (read == 0) {
                     closed = true;

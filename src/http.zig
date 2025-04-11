@@ -337,7 +337,7 @@ pub const Response = struct {
     pub fn add_header(self: *Response, name: []const u8, value: anytype) !void {
         const header = try self.extra_headers.addOne();
         try header.name.writer().writeAll(name);
-        if (@typeInfo(@TypeOf(value)).Struct.fields.len < 2 or @sizeOf(@TypeOf(value[1])) == 0) {
+        if (@typeInfo(@TypeOf(value)).@"struct".fields.len < 2 or @sizeOf(@TypeOf(value[1])) == 0) {
             try header.value.writer().writeAll(value[0]);
         } else {
             try std.fmt.format(header.value.writer(), value[0], value[1]);
@@ -356,7 +356,7 @@ pub const Response = struct {
     pub fn write(self: *Response, comptime fmt: []const u8, args: anytype) !void {
         const writer = self.stream_body.writer();
 
-        if (@sizeOf(@TypeOf(args)) == 0) {
+        if (@typeInfo(@TypeOf(args)).@"struct".fields.len == 0) {
             try writer.writeAll(fmt);
         } else {
             try std.fmt.format(writer, fmt, args);
